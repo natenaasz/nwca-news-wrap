@@ -28,9 +28,10 @@ from anthropic import Anthropic
 SITE_RSS_URL = os.environ["SITE_RSS_URL"]            # e.g. https://nwcaonline.com/rss
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5")
 
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs")  # "elevenlabs" or "openai"
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs")  # "elevenlabs", "openai" or "kokoro"
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
 OPENAI_VOICE = os.getenv("OPENAI_VOICE", "onyx")
+KOKORO_VOICE = os.getenv("KOKORO_VOICE") or "am_michael"  # free, runs locally; see kokoro VOICES.md
 
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "")
 R2_BUCKET = os.getenv("R2_BUCKET", "")
@@ -159,7 +160,28 @@ def chunk_text(text, limit):
     return chunks
 
 
+_kokoro = None
+
+
+def kokoro_chunk(text, path):
+    global _kokoro
+    import numpy as np
+    import soundfile as sf
+    if _kokoro is None:
+        from kokoro import KPipeline
+        _kokoro = KPipeline(lang_code="a")  # American English
+    audio = np.concatenate([a for _, _, a in _kokoro(text, voice=KOKORO_VOICE)])
+    wav = Path(path).with_suffix(".wav")
+    sf.write(wav, audio, 24000)
+    subprocess.run(["ffmpeg", "-y", "-i", str(wav), "-ar", "44100", "-ac", "2", "-b:a", "128k", str(path)],
+                   check=True, capture_output=True)
+    wav.unlink()
+
+
 def tts_chunk(text, path):
+    if TTS_PROVIDER == "kokoro":
+        kokoro_chunk(text, path)
+        return
     if TTS_PROVIDER == "elevenlabs":
         r = requests.post(
             f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",

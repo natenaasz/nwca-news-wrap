@@ -14,11 +14,23 @@ jobs:
         with: { python-version: "3.12" }
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r requirements.txt
+      - name: Install Kokoro (free local TTS)
+        if: vars.TTS_PROVIDER == 'kokoro'
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-kokoro.txt
+      - name: Cache Kokoro voice model
+        if: vars.TTS_PROVIDER == 'kokoro'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: kokoro-hf-v1
       - name: Build episode
         run: python news_wrap.py build
         env:
           SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          KOKORO_VOICE: ${{ vars.KOKORO_VOICE }}
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}

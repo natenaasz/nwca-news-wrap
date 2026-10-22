@@ -8,8 +8,9 @@ Every Friday: website RSS → Claude writes a script → TTS voices it → MP3 +
 2. **R2:** make a public bucket (or reuse nwca-resources with a custom domain), create an R2 API token with read/write on it.
    Upload 3000x3000 cover art and note its URL.
 3. **Repo → Settings → Secrets and variables → Actions**
-   - Secrets: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY` (or `OPENAI_API_KEY`), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
-   - Variables: `SITE_RSS_URL`, `TTS_PROVIDER` (`elevenlabs` or `openai`), `ELEVENLABS_VOICE_ID`,
+   - Secrets: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY` or `OPENAI_API_KEY` (none needed for `kokoro`), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+   - Variables: `SITE_RSS_URL`, `TTS_PROVIDER` (`elevenlabs`, `openai`, or `kokoro` — free, runs on the runner),
+     `ELEVENLABS_VOICE_ID` or `KOKORO_VOICE` (e.g. `am_michael`),
      `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_PUBLIC_BASE`, `PODCAST_EMAIL`, `PODCAST_COVER_URL`
 4. **Repo → Settings → Environments → New "podcast"** → add yourself as a required reviewer
    (you'll get an email each Friday to listen and approve). Remove the reviewer later to go fully automatic.
