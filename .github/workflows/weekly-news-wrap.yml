@@ -1,0 +1,56 @@
+name: The NWCA Wrap
+
+on:
+  schedule:
+    - cron: "5 20 * * 5"   # Fridays 20:05 UTC = 3:05pm CDT / 2:05pm CST, always after the 2pm CT cutoff
+  workflow_dispatch: {}     # "Run workflow" button for manual runs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt
+      - name: Build episode
+        run: python news_wrap.py build
+        env:
+          SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
+          TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: episode
+          path: output/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Approval gate: add required reviewers to the "podcast" environment in repo settings.
+    # Remove reviewers there to make publishing fully automatic.
+    environment: podcast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: episode
+          path: output/
+      - name: Publish to R2 + update feed
+        run: python news_wrap.py publish
+        env:
+          SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ vars.R2_PUBLIC_BASE }}
+          PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
+          PODCAST_COVER_URL: ${{ vars.PODCAST_COVER_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

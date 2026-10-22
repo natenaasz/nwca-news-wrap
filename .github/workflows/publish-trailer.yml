@@ -1,0 +1,26 @@
+name: Publish Trailer (one-time)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  trailer:
+    runs-on: ubuntu-latest
+    environment: podcast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt
+      - name: Publish trailer to R2 + create feed
+        run: python news_wrap.py trailer assets/trailer.mp3
+        env:
+          SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ vars.R2_PUBLIC_BASE }}
+          PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
+          PODCAST_COVER_URL: ${{ vars.PODCAST_COVER_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
