@@ -12,7 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        timeout-minutes: 10  # a stuck Ubuntu mirror otherwise hangs for hours
       - run: pip install -r requirements.txt
       - name: Install Kokoro (free local TTS)
         if: vars.TTS_PROVIDER == 'kokoro'
