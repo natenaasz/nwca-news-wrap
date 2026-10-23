@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
-from email.utils import format_datetime
+from email.utils import format_datetime, parsedate
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from xml.sax.saxutils import escape
@@ -61,6 +61,18 @@ PRONUNCIATIONS = Path("pronunciations.json")  # {"Naasz": "Nahz", ...}
 # ---------- 1. Fetch the week's articles ----------
 LOCAL_TZ = ZoneInfo(os.getenv("LOCAL_TZ", "America/Chicago"))
 CUTOFF_HOUR = int(os.getenv("CUTOFF_HOUR", "14"))  # Friday cutoff, local time (matches the 2pm CT run)
+# nwcaonline.com stamps pubDates with Eastern wall-clock time but always labels them "EST",
+# even during daylight time, so ignore the label and read the clock time in this zone.
+SITE_TZ = ZoneInfo(os.getenv("SITE_TZ", "America/New_York"))
+
+
+def published_at(entry):
+    raw = entry.get("published") or entry.get("updated")
+    t = parsedate(raw) if raw else None  # drops the (wrong) zone label
+    if t:
+        return datetime(*t[:6], tzinfo=SITE_TZ)
+    t = entry.get("published_parsed") or entry.get("updated_parsed")
+    return datetime(*t[:6], tzinfo=timezone.utc) if t else None
 
 
 def friday_window(now=None):
@@ -82,10 +94,9 @@ def fetch_articles():
     print(f"Window: {start:%a %b %d %I:%M%p} -> {end:%a %b %d %I:%M%p} {LOCAL_TZ.key}")
     articles = []
     for e in feed.entries:
-        t = e.get("published_parsed") or e.get("updated_parsed")
-        if not t:
+        published = published_at(e)
+        if not published:
             continue
-        published = datetime(*t[:6], tzinfo=timezone.utc)  # feedparser normalizes to UTC
         if not (start <= published < end):
             continue
         body = ""
