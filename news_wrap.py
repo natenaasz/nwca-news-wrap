@@ -85,19 +85,42 @@ def friday_window(now=None):
         hour=CUTOFF_HOUR, minute=0, second=0, microsecond=0)
     if end > now:  # it's Friday but before the cutoff hour
         end -= timedelta(days=7)
-    return end - timedelta(days=7), end
+    start = end - timedelta(days=7)
+    if os.getenv("WINDOW_END_NOW"):  # one-off catch-up run: also take articles posted after the cutoff
+        end = now
+    return start, end
+
+
+def published_links():
+    """Article links already used in a published episode, so a catch-up run's extra
+    articles aren't repeated the following week."""
+    if not R2_PUBLIC_BASE:
+        return set()
+    try:
+        r = requests.get(f"{R2_PUBLIC_BASE}/{R2_PREFIX}/episodes.json", timeout=30)
+        if r.status_code == 404:
+            return set()
+        r.raise_for_status()
+        return {l["link"] for ep in r.json() for l in ep.get("links", [])}
+    except (requests.RequestException, ValueError) as err:
+        print(f"WARNING: couldn't read published episodes ({err}); repeats won't be skipped.")
+        return set()
 
 
 def fetch_articles():
     feed = feedparser.parse(SITE_RSS_URL)
     start, end = friday_window()
     print(f"Window: {start:%a %b %d %I:%M%p} -> {end:%a %b %d %I:%M%p} {LOCAL_TZ.key}")
+    already_aired = published_links()
     articles = []
     for e in feed.entries:
         published = published_at(e)
         if not published:
             continue
         if not (start <= published < end):
+            continue
+        if e.get("link") in already_aired:
+            print(f"Skipping (already aired): {e.get('title', '')}")
             continue
         body = ""
         if e.get("content"):

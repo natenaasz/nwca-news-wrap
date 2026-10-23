@@ -12,8 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-        timeout-minutes: 10  # a stuck Ubuntu mirror otherwise hangs for hours
+        run: bash .github/install-ffmpeg.sh
+        timeout-minutes: 10
       - run: pip install -r requirements.txt
       - name: Publish trailer to R2 + create feed
         run: python news_wrap.py trailer assets/trailer.mp3
