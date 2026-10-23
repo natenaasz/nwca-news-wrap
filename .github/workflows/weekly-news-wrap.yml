@@ -1,8 +1,12 @@
 name: The NWCA Wrap
 
 on:
+  # Cron is UTC and ignores daylight saving, so cover 2:30pm + 3:30pm CT in both CDT and CST;
+  # the gate job skips slots before the 2pm CT cutoff and backups once an episode is built.
   schedule:
-    - cron: "5 20 * * 5"   # Fridays 20:05 UTC = 3:05pm CDT / 2:05pm CST, always after the 2pm CT cutoff
+    - cron: "30 19 * * 5"  # 2:30pm CDT (1:30pm CST: skipped)
+    - cron: "30 20 * * 5"  # 3:30pm CDT backup / 2:30pm CST
+    - cron: "30 21 * * 5"  # 3:30pm CST backup (4:30pm CDT: only if nothing ran earlier)
   workflow_dispatch:        # "Run workflow" button for manual runs
     inputs:
       through_now:
@@ -11,7 +15,23 @@ on:
         default: false
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: python3 .github/should_build.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build:
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
