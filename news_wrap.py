@@ -6,6 +6,7 @@ Usage:
   python news_wrap.py publish   # upload audio to R2 and regenerate the podcast feed
   python news_wrap.py all       # build + publish in one go
   python news_wrap.py trailer assets/trailer.mp3   # one-time: add the show trailer to the feed
+  python news_wrap.py collect   # save new site articles to data/articles.json (run hourly)
 """
 import json
 import os
@@ -107,30 +108,62 @@ def published_links():
         return set()
 
 
+# The site's feed only carries its 10 newest items, so a busy week can push early stories out
+# before Friday. An hourly `collect` run saves every article it sees here (committed to the repo),
+# and the build reads these saved articles alongside the live feed.
+SAVED_ARTICLES = Path("data/articles.json")
+KEEP_DAYS = 35
+
+
+def feed_articles():
+    articles = []
+    for e in feedparser.parse(SITE_RSS_URL).entries:
+        published = published_at(e)
+        if not published or not e.get("link"):
+            continue
+        body = e.content[0].value if e.get("content") else e.get("summary", "")
+        body = re.sub(r"<[^>]+>", " ", body)
+        body = re.sub(r"\s+", " ", body).strip()[:6000]
+        articles.append({"title": e.get("title", ""), "link": e["link"],
+                         "published": published.isoformat(), "body": body})
+    return articles
+
+
+def load_saved():
+    return json.loads(SAVED_ARTICLES.read_text()) if SAVED_ARTICLES.exists() else []
+
+
+def collect():
+    """Save any new feed articles to SAVED_ARTICLES, dropping ones older than KEEP_DAYS."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)
+    recent = lambda a: datetime.fromisoformat(a["published"]) >= cutoff  # also skips old pinned posts
+    saved = {a["link"]: a for a in load_saved() if recent(a)}
+    new = [a for a in feed_articles() if a["link"] not in saved and recent(a)]
+    for a in new:
+        saved[a["link"]] = a
+        print(f"Saved: {a['title']}")
+    kept = sorted(saved.values(), key=lambda a: a["published"], reverse=True)
+    SAVED_ARTICLES.parent.mkdir(exist_ok=True)
+    SAVED_ARTICLES.write_text(json.dumps(kept, indent=2, ensure_ascii=False) + "\n")
+    print(f"{len(new)} new; {len(kept)} saved articles.")
+
+
 def fetch_articles():
-    feed = feedparser.parse(SITE_RSS_URL)
     start, end = friday_window()
     print(f"Window: {start:%a %b %d %I:%M%p} -> {end:%a %b %d %I:%M%p} {LOCAL_TZ.key}")
     already_aired = published_links()
+    pool = {a["link"]: a for a in load_saved()}
+    pool.update({a["link"]: a for a in feed_articles()})  # live feed wins for anything edited
     articles = []
-    for e in feed.entries:
-        published = published_at(e)
-        if not published:
-            continue
+    for a in sorted(pool.values(), key=lambda a: a["published"], reverse=True):
+        published = datetime.fromisoformat(a["published"])
         if not (start <= published < end):
             continue
-        if e.get("link") in already_aired:
-            print(f"Skipping (already aired): {e.get('title', '')}")
+        if a["link"] in already_aired:
+            print(f"Skipping (already aired): {a['title']}")
             continue
-        body = ""
-        if e.get("content"):
-            body = e.content[0].value
-        else:
-            body = e.get("summary", "")
-        body = re.sub(r"<[^>]+>", " ", body)
-        body = re.sub(r"\s+", " ", body).strip()[:6000]
-        articles.append({"title": e.get("title", ""), "link": e.get("link", ""),
-                         "date": published.strftime("%B %d"), "body": body})
+        articles.append({"title": a["title"], "link": a["link"],
+                         "date": published.strftime("%B %d"), "body": a["body"]})
     return articles
 
 
@@ -394,6 +427,9 @@ def publish_trailer(mp3_path):
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "trailer":
         publish_trailer(sys.argv[2])
+        sys.exit()
+    if len(sys.argv) > 1 and sys.argv[1] == "collect":
+        collect()
         sys.exit()
     stage = sys.argv[1] if len(sys.argv) > 1 else "all"
     if stage in ("build", "all"):

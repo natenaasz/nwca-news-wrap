@@ -18,6 +18,11 @@ Every Friday: website RSS → Claude writes a script → TTS voices it → MP3 +
 6. **Spotify for Creators** → "I already have a podcast" → paste `R2_PUBLIC_BASE/news-wrap/feed.xml`
    → verify via the code emailed to `PODCAST_EMAIL`. Done; new episodes auto-appear.
 
+## How articles are gathered
+The site's RSS feed only lists its 10 newest posts, so **Collect Articles** runs hourly and saves
+every new article to `data/articles.json` (kept 35 days). The Friday build uses those saved articles
+plus the live feed, and skips any story that already aired in an earlier episode.
+
 ## Optional
 - `assets/intro.mp3` / `assets/outro.mp3` get stitched on automatically if present.
 - Add names to `pronunciations.json` when the voice mispronounces them.
