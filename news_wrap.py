@@ -205,6 +205,41 @@ def write_script(articles):
     return script, info
 
 
+# Social post for the episode. The Spotify episode link only exists after Spotify picks the
+# episode up, so the post leaves a placeholder to paste it into.
+LINK_PLACEHOLDER = "[SPOTIFY LINK]"
+SOCIAL_PROMPT = f"""You write the social media post announcing this week's episode of The NWCA Wrap,
+the weekly podcast of the National Wrestling Coaches Association, from the episode script.
+Return two versions, exactly in this layout and nothing else:
+
+FACEBOOK / INSTAGRAM / LINKEDIN
+<a bold-style hook line starting with 🎙️ that names The NWCA Wrap and the week's theme>
+<blank line, then one short line per story, each starting with a fitting emoji and a bold label>
+<a closing line like "Four minutes on the week in college wrestling. 🎧", using the real length>
+{LINK_PLACEHOLDER}
+<5-6 hashtags, always including #NWCAWrap and #CollegeWrestling>
+
+X
+<one sentence under 230 characters covering the top stories, starting with 🎙️, then 🎧 {LINK_PLACEHOLDER} #NWCAWrap #CollegeWrestling>
+
+Rules: use only facts from the script, never invent anything. Write abbreviations normally
+(NCAA, NAIA, NCWA, NWCA, Division I) rather than the spoken spellings in the script.
+Use {LINK_PLACEHOLDER} exactly as written wherever the episode link goes; never write a URL."""
+
+
+def write_social(script, minutes):
+    msg = Anthropic().messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4000,
+        system=SOCIAL_PROMPT,
+        messages=[{"role": "user", "content": f"Episode length: about {minutes} minutes.\n\n{script}"}],
+    )
+    post = "".join(b.text for b in msg.content if b.type == "text").strip()
+    if msg.stop_reason != "end_turn":
+        print(f"Warning: social post stopped early ({msg.stop_reason}, {msg.usage.output_tokens} tokens)")
+    return post if LINK_PLACEHOLDER in post else f"{post}\n\n{LINK_PLACEHOLDER}"
+
+
 def apply_pronunciations(text):
     if PRONUNCIATIONS.exists():
         for word, spoken in json.loads(PRONUNCIATIONS.read_text()).items():
@@ -322,6 +357,11 @@ def build():
     }
     (OUT / "episode.json").write_text(json.dumps(episode, indent=2))
     print(f"Built episode: {episode['title']} ({episode['duration']}s)")
+
+    try:  # a failed post shouldn't hold up the episode
+        (OUT / "social.txt").write_text(write_social(script, round(episode["duration"] / 60)))
+    except Exception as e:
+        print(f"Warning: couldn't write the social post: {e}")
 
 
 # ---------- 4. Publish stage: R2 + podcast feed ----------

@@ -64,6 +64,12 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Show social post on the review page
+        if: hashFiles('output/social.txt') != ''
+        run: |
+          { echo "## Social media post"
+            echo "Paste the Spotify episode link where it says **[SPOTIFY LINK]** once Spotify publishes the episode."
+            echo; echo '```'; cat output/social.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: episode
