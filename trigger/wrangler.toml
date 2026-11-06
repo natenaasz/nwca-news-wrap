@@ -1,0 +1,12 @@
+name = "nwca-wrap-trigger"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+account_id = "8e8d9ef865b19f89066694839fb9f424"
+workers_dev = false
+
+# UTC times. Covers 2:30pm and 3:30pm CT in both CDT and CST; the Worker ignores the others.
+[triggers]
+crons = ["30 19 * * 5", "30 20 * * 5", "30 21 * * 5"]
+
+[observability]
+enabled = true

@@ -23,6 +23,14 @@ The site's RSS feed only lists its 10 newest posts, so **Collect Articles** runs
 every new article to `data/articles.json` (kept 35 days). The Friday build uses those saved articles
 plus the live feed, and skips any story that already aired in an earlier episode.
 
+## When it runs
+Every Friday at **2:30pm CT**, with a 3:30pm CT backup. GitHub's own schedule often starts hours
+late, so a Cloudflare Worker (`trigger/`, deployed as `nwca-wrap-trigger` on the NWCA Cloudflare
+account) presses "Run workflow" on time. It uses a fine-grained GitHub token (`nwca-wrap-trigger`,
+Actions read/write on this repo only) stored as the Worker secret `GITHUB_TOKEN`; **renew it before
+it expires** with `npx wrangler secret put GITHUB_TOKEN --name nwca-wrap-trigger`. GitHub's schedule
+stays on as a fallback and skips itself once an episode has been built.
+
 ## Optional
 - `assets/intro.mp3` / `assets/outro.mp3` get stitched on automatically if present.
 - Add names to `pronunciations.json` when the voice mispronounces them.
