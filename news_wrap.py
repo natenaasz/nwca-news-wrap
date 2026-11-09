@@ -7,10 +7,12 @@ Usage:
   python news_wrap.py all       # build + publish in one go
   python news_wrap.py trailer assets/trailer.mp3   # one-time: add the show trailer to the feed
   python news_wrap.py collect   # save new site articles to data/articles.json (run hourly)
+  python news_wrap.py review    # upload a preview and write the run's review page
 """
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -178,29 +180,30 @@ no stage directions, no headings, no markdown, no URLs, no emoji.
 - Write numbers and abbreviations the way they should be spoken (e.g. "Division One", "N-C-A-A")."""
 
 
+def ask_claude(system, content, max_tokens):
+    """Return Claude's full reply. Hidden reasoning counts toward max_tokens, so a reply can stop
+    early; retry once with double the room, and fail rather than voice a cut-off script."""
+    for limit in (max_tokens, max_tokens * 2):
+        msg = Anthropic().messages.create(model=CLAUDE_MODEL, max_tokens=limit, system=system,
+                                          messages=[{"role": "user", "content": content}])
+        text = "".join(b.text for b in msg.content if b.type == "text").strip()
+        if msg.stop_reason == "end_turn" and text:
+            return text
+        print(f"Warning: Claude's reply stopped early ({msg.stop_reason}, {msg.usage.output_tokens} tokens)")
+    raise RuntimeError("Claude's reply was incomplete twice")
+
+
 def write_script(articles):
-    client = Anthropic()
     start, end = friday_window()
     week_label = f"{start:%B %d} through {end:%B %d, %Y}"
     payload = "\n\n".join(
         f"ARTICLE {i+1}: {a['title']} ({a['date']})\n{a['body']}" for i, a in enumerate(articles)
     )
-    msg = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"This episode covers {week_label}.\n\n{payload}"}],
-    )
-    script = "".join(b.text for b in msg.content if b.type == "text").strip()
+    script = ask_claude(SYSTEM_PROMPT, f"This episode covers {week_label}.\n\n{payload}", 8000)
 
     # Second short call for episode title + show notes
-    meta = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=600,
-        system="Return ONLY JSON: {\"title\": str (under 70 chars), \"summary\": str (2-3 sentences)}. No markdown.",
-        messages=[{"role": "user", "content": script}],
-    )
-    raw = "".join(b.text for b in meta.content if b.type == "text")
+    raw = ask_claude("Return ONLY JSON: {\"title\": str (under 70 chars), \"summary\": str (2-3 sentences)}. No markdown.",
+                     script, 2000)
     info = json.loads(re.sub(r"```(json)?", "", raw).strip())
     return script, info
 
@@ -228,15 +231,7 @@ Use {LINK_PLACEHOLDER} exactly as written wherever the episode link goes; never 
 
 
 def write_social(script, minutes):
-    msg = Anthropic().messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4000,
-        system=SOCIAL_PROMPT,
-        messages=[{"role": "user", "content": f"Episode length: about {minutes} minutes.\n\n{script}"}],
-    )
-    post = "".join(b.text for b in msg.content if b.type == "text").strip()
-    if msg.stop_reason != "end_turn":
-        print(f"Warning: social post stopped early ({msg.stop_reason}, {msg.usage.output_tokens} tokens)")
+    post = ask_claude(SOCIAL_PROMPT, f"Episode length: about {minutes} minutes.\n\n{script}", 4000)
     return post if LINK_PLACEHOLDER in post else f"{post}\n\n{LINK_PLACEHOLDER}"
 
 
@@ -416,6 +411,44 @@ def build_feed(episodes):
 """
 
 
+PREVIEW_PREFIX = f"{R2_PREFIX}/previews"  # not in the feed; cleared when an episode publishes
+
+
+def review():
+    """Upload a preview of the built episode to an unlisted R2 address and write the run's
+    review page (title, listen link, stories, social post, script), so it can be checked
+    and approved from a phone without downloading anything."""
+    lines = []
+    if (OUT / "SKIP").exists():
+        lines += ["## No episode this week", "No new articles were posted, so there's nothing to approve."]
+    else:
+        ep = json.loads((OUT / "episode.json").read_text())
+        key = f"{PREVIEW_PREFIX}/{ep['slug']}-{secrets.token_hex(8)}.mp3"
+        r2().upload_file(str(OUT / ep["file"]), R2_BUCKET, key, ExtraArgs={"ContentType": "audio/mpeg"})
+        minutes, seconds = divmod(ep["duration"], 60)
+        lines += [f"## {ep['title']}",
+                  f"### [▶️ Listen to the preview ({minutes}:{seconds:02d})]({R2_PUBLIC_BASE}/{key})",
+                  "This preview isn't in the podcast feed. When it sounds right, click **Review deployments** "
+                  "above, check **podcast**, then **Approve and deploy**.", "",
+                  ep["summary"], "", "**Stories**"]
+        lines += [f"- [{l['title']}]({l['link']})" for l in ep["links"]]
+        if (OUT / "social.txt").exists():
+            lines += ["", "## Social media post",
+                      f"Paste the Spotify episode link where it says **{LINK_PLACEHOLDER}** once Spotify publishes the episode.",
+                      "", "```", (OUT / "social.txt").read_text(), "```"]
+        else:
+            lines += ["", "_The social media post couldn't be written this week; see the build log._"]
+        lines += ["", "<details><summary><b>Script</b></summary>", "",
+                  (OUT / "script.txt").read_text(), "", "</details>"]
+    page = "\n".join(lines) + "\n"
+    summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write(page)
+    else:
+        print(page)
+
+
 def publish():
     if (OUT / "SKIP").exists():
         print("Nothing to publish.")
@@ -436,6 +469,9 @@ def publish():
                   ContentType="application/json")
     s3.put_object(Bucket=R2_BUCKET, Key=f"{R2_PREFIX}/feed.xml", Body=build_feed(episodes),
                   ContentType="application/rss+xml", CacheControl="max-age=300")
+    previews = s3.list_objects_v2(Bucket=R2_BUCKET, Prefix=f"{PREVIEW_PREFIX}/").get("Contents", [])
+    for obj in previews:
+        s3.delete_object(Bucket=R2_BUCKET, Key=obj["Key"])
     print(f"Published. Feed: {R2_PUBLIC_BASE}/{R2_PREFIX}/feed.xml")
 
 
@@ -468,8 +504,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "trailer":
         publish_trailer(sys.argv[2])
         sys.exit()
-    if len(sys.argv) > 1 and sys.argv[1] == "collect":
-        collect()
+    if len(sys.argv) > 1 and sys.argv[1] in ("collect", "review"):
+        {"collect": collect, "review": review}[sys.argv[1]]()
         sys.exit()
     stage = sys.argv[1] if len(sys.argv) > 1 else "all"
     if stage in ("build", "all"):

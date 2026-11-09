@@ -33,6 +33,8 @@ jobs:
     needs: gate
     if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      has_episode: ${{ steps.review.outputs.has_episode }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -64,12 +66,18 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      - name: Show social post on the review page
-        if: hashFiles('output/social.txt') != ''
+      - name: Upload preview and write the review page
+        id: review
         run: |
-          { echo "## Social media post"
-            echo "Paste the Spotify episode link where it says **[SPOTIFY LINK]** once Spotify publishes the episode."
-            echo; echo '```'; cat output/social.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python news_wrap.py review
+          echo "has_episode=$([ -f output/episode.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        env:
+          SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ vars.R2_PUBLIC_BASE }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       - uses: actions/upload-artifact@v4
         with:
           name: episode
@@ -77,6 +85,7 @@ jobs:
 
   publish:
     needs: build
+    if: needs.build.outputs.has_episode == 'true'  # no approval request on weeks with no news
     runs-on: ubuntu-latest
     # Approval gate: add required reviewers to the "podcast" environment in repo settings.
     # Remove reviewers there to make publishing fully automatic.

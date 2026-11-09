@@ -23,10 +23,12 @@ The site's RSS feed only lists its 10 newest posts, so **Collect Articles** runs
 every new article to `data/articles.json` (kept 35 days). The Friday build uses those saved articles
 plus the live feed, and skips any story that already aired in an earlier episode.
 
-## Social media post
-Each build also writes a social post from the script (`social.txt`, a Facebook/Instagram/LinkedIn
-version and a short X version). It's shown on the run's page above **Review deployments**. Paste the
-Spotify episode link where it says `[SPOTIFY LINK]` once Spotify publishes the episode.
+## Reviewing an episode
+The approval email links to the run's page. Its summary shows a **Listen to the preview** link
+(an unlisted copy of the MP3 that plays in any browser, removed once the episode publishes), the
+title, story list, script and a social media post. Approve with **Review deployments** on that page.
+Paste the Spotify episode link into the post where it says `[SPOTIFY LINK]` once Spotify publishes it.
+Weeks with no new articles end after the build, with no approval request.
 
 ## When it runs
 Every Friday at **2:30pm CT**, with a 3:30pm CT backup. GitHub's own schedule often starts hours
