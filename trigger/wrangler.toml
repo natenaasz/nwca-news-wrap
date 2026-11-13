@@ -2,11 +2,18 @@ name = "nwca-wrap-trigger"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 account_id = "8e8d9ef865b19f89066694839fb9f424"
-workers_dev = false
+workers_dev = true  # serves /notify for the build's preview email
+preview_urls = false
 
-# UTC times; use FRI, since Cloudflare numbers weekdays 1 = Sunday (so "5" is Thursday). Covers 2:30pm and 3:30pm CT in both CDT and CST; the Worker ignores the others.
+# UTC times; use FRI, since Cloudflare numbers weekdays 1 = Sunday (so "5" is Thursday).
+# Covers 2:30pm and 2:45pm CT in both CDT (19:xx UTC) and CST (20:xx UTC); the Worker ignores the others.
 [triggers]
-crons = ["30 19 * * FRI", "30 20 * * FRI", "30 21 * * FRI"]
+crons = ["30 19 * * FRI", "45 19 * * FRI", "30 20 * * FRI", "45 20 * * FRI"]
+
+# Preview emails go only to this verified address.
+[[send_email]]
+name = "EMAIL"
+destination_address = "nnaasz@nwca.cc"
 
 [observability]
 enabled = true

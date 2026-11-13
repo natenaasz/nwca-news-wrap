@@ -24,14 +24,20 @@ every new article to `data/articles.json` (kept 35 days). The Friday build uses 
 plus the live feed, and skips any story that already aired in an earlier episode.
 
 ## Reviewing an episode
-The approval email links to the run's page. Its summary shows a **Listen to the preview** link
-(an unlisted copy of the MP3 that plays in any browser, removed once the episode publishes), the
-title, story list, script and a social media post. Approve with **Review deployments** on that page.
-Paste the Spotify episode link into the post where it says `[SPOTIFY LINK]` once Spotify publishes it.
-Weeks with no new articles end after the build, with no approval request.
+By about 2:35pm CT (2:50pm if the backup run is needed) an email arrives at nnaasz@nwca.cc from
+wrap@nwcatech.org with a **Listen to the preview** button, an **Approve or reject** button, the
+stories, a social media post and the full script. The preview is an unlisted copy of the MP3 that's
+removed once the episode publishes. Approve on the run page with **Review deployments** (signed in
+to GitHub as natenaasz). Paste the Spotify episode link into the post where it says `[SPOTIFY LINK]`
+once Spotify publishes it. Quiet weeks and failed builds send a short email instead.
+
+The email goes through the `nwca-wrap-trigger` Worker: the build POSTs to `NOTIFY_URL` (repo
+variable) with the shared `NOTIFY_SECRET` (repo secret and Worker secret), and the Worker's
+`send_email` binding delivers it. To change the recipient, verify the new address in Cloudflare
+Email Routing and update `TO` and `destination_address` in `trigger/`.
 
 ## When it runs
-Every Friday at **2:30pm CT**, with a 3:30pm CT backup. GitHub's own schedule often starts hours
+Every Friday at **2:30pm CT**, with a 2:45pm CT backup. GitHub's own schedule often starts hours
 late, so a Cloudflare Worker (`trigger/`, deployed as `nwca-wrap-trigger` on the NWCA Cloudflare
 account) presses "Run workflow" on time. It uses a fine-grained GitHub token (`nwca-wrap-trigger`,
 Actions read/write on this repo only) stored as the Worker secret `GITHUB_TOKEN`; **renew it before

@@ -78,6 +78,19 @@ jobs:
           R2_PUBLIC_BASE: ${{ vars.R2_PUBLIC_BASE }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      - name: Email the preview, script and social post
+        run: python news_wrap.py notify
+        env:
+          SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
+          NOTIFY_URL: ${{ vars.NOTIFY_URL }}
+          NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
+      - name: Email if the build failed
+        if: failure()
+        run: python news_wrap.py notify --failed
+        env:
+          SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
+          NOTIFY_URL: ${{ vars.NOTIFY_URL }}
+          NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
       - uses: actions/upload-artifact@v4
         with:
           name: episode

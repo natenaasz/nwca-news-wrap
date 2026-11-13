@@ -1,7 +1,10 @@
-// Starts The NWCA Wrap at 2:30pm CT on Fridays, with a 3:30pm CT backup.
-// GitHub's own schedule often starts hours late, so this Cloudflare Worker presses
-// "Run workflow" on time instead. Uses the same rule as .github/should_build.py:
+// Starts The NWCA Wrap at 2:30pm CT on Fridays, with a 2:45pm CT backup, so the preview email
+// arrives before 3pm. GitHub's own schedule often starts hours late, so this Cloudflare Worker
+// presses "Run workflow" on time instead. Uses the same rule as .github/should_build.py:
 // skip if a run since noon CT is still going or has already built the episode.
+//
+// It also sends the preview email: the build POSTs {subject, text, html} to /notify with the
+// shared NOTIFY_SECRET, and the EMAIL binding (locked to one verified address) delivers it.
 const REPO = "natenaasz/nwca-news-wrap";
 const WORKFLOW = "weekly-news-wrap.yml";
 
@@ -26,13 +29,37 @@ async function github(env, path, init = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+const FROM = { email: "wrap@nwcatech.org", name: "The NWCA Wrap" };
+const TO = "nnaasz@nwca.cc";  // must match the EMAIL binding's destination_address
+
+async function notify(request, env) {
+  if (request.method !== "POST" || new URL(request.url).pathname !== "/notify") {
+    return new Response("Not found", { status: 404 });
+  }
+  if (!env.NOTIFY_SECRET || request.headers.get("Authorization") !== `Bearer ${env.NOTIFY_SECRET}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  const { subject, text, html } = await request.json();
+  if (!subject || !text) return new Response("subject and text are required", { status: 400 });
+  try {
+    const { messageId } = await env.EMAIL.send({ from: FROM, to: TO, subject, text, html });
+    console.log(`Sent "${subject}" (${messageId})`);
+    return Response.json({ messageId });
+  } catch (e) {
+    console.error(`Email failed: ${e.code} ${e.message}`);
+    return new Response(`Email failed: ${e.code} ${e.message}`, { status: 502 });
+  }
+}
+
 export default {
+  fetch: notify,
+
   async scheduled(event, env) {
     const now = new Date(event.scheduledTime);
     const ct = chicago(now);
     const hour = Number(ct.hour);
-    if (ct.weekday !== "Fri" || (hour !== 14 && hour !== 15)) {
-      console.log(`Skipping: ${ct.weekday} ${ct.hour}:${ct.minute} CT is not 2:30 or 3:30pm Friday`);
+    if (ct.weekday !== "Fri" || hour !== 14) {
+      console.log(`Skipping: ${ct.weekday} ${ct.hour}:${ct.minute} CT is not 2:30 or 2:45pm Friday`);
       return;
     }
     const noon = new Date(now.getTime() - ((hour - 12) * 60 + Number(ct.minute)) * 60_000);

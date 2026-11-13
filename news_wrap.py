@@ -8,6 +8,7 @@ Usage:
   python news_wrap.py trailer assets/trailer.mp3   # one-time: add the show trailer to the feed
   python news_wrap.py collect   # save new site articles to data/articles.json (run hourly)
   python news_wrap.py review    # upload a preview and write the run's review page
+  python news_wrap.py notify [--failed]   # email the preview (or a failure note)
 """
 import json
 import os
@@ -425,6 +426,7 @@ def review():
         ep = json.loads((OUT / "episode.json").read_text())
         key = f"{PREVIEW_PREFIX}/{ep['slug']}-{secrets.token_hex(8)}.mp3"
         r2().upload_file(str(OUT / ep["file"]), R2_BUCKET, key, ExtraArgs={"ContentType": "audio/mpeg"})
+        (OUT / "preview_url.txt").write_text(f"{R2_PUBLIC_BASE}/{key}")
         minutes, seconds = divmod(ep["duration"], 60)
         lines += [f"## {ep['title']}",
                   f"### [▶️ Listen to the preview ({minutes}:{seconds:02d})]({R2_PUBLIC_BASE}/{key})",
@@ -447,6 +449,65 @@ def review():
             f.write(page)
     else:
         print(page)
+
+
+def run_url():
+    return f"{os.getenv('GITHUB_SERVER_URL', 'https://github.com')}/{os.getenv('GITHUB_REPOSITORY', '')}/actions/runs/{os.getenv('GITHUB_RUN_ID', '')}"
+
+
+def preview_email(failed=False):
+    """(subject, text, html) for the Friday email: the preview link, how to approve,
+    the stories, the social post and the script; or a short note on quiet or failed weeks."""
+    h = lambda t: escape(t, {'"': "&quot;"})
+    button = lambda url, label, color: (
+        f'<a href="{h(url)}" style="display:inline-block;padding:12px 20px;margin:4px 8px 4px 0;background:{color};'
+        f'color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">{label}</a>')
+    if failed:
+        text = f"Friday's build didn't finish, so there's no preview yet. Open the run to see what went wrong:\n{run_url()}"
+        return ("⚠️ The NWCA Wrap: this week's build failed", text,
+                f"<p>Friday's build didn't finish, so there's no preview yet.</p>{button(run_url(), 'Open the run', '#b42318')}")
+    if (OUT / "SKIP").exists():
+        text = "No new articles were posted on nwcaonline.com this week, so there's no episode and nothing to approve."
+        return ("The NWCA Wrap: no episode this week", text, f"<p>{text}</p>")
+
+    ep = json.loads((OUT / "episode.json").read_text())
+    listen = (OUT / "preview_url.txt").read_text().strip()
+    script = (OUT / "script.txt").read_text().strip()
+    social = (OUT / "social.txt").read_text().strip() if (OUT / "social.txt").exists() else ""
+    length = "%d:%02d" % divmod(ep["duration"], 60)
+    approve = "On the run page, click Review deployments, check podcast, then Approve and deploy (signed in to GitHub as natenaasz)."
+    paste = f"Paste the Spotify episode link where it says {LINK_PLACEHOLDER} once Spotify publishes the episode."
+
+    text = "\n".join([
+        ep["title"], "", f"Listen to the preview ({length}): {listen}", f"Approve or reject: {run_url()}", approve, "",
+        ep["summary"], "", "STORIES", *[f"- {l['title']}: {l['link']}" for l in ep["links"]], "",
+        "SOCIAL MEDIA POST", paste, "", social or "(The social post couldn't be written this week; see the run log.)", "",
+        "SCRIPT", "", script])
+    html = "".join([
+        '<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1f2328;max-width:640px">',
+        f'<h2 style="margin:0 0 12px">{h(ep["title"])}</h2>',
+        button(listen, f"▶ Listen to the preview ({length})", "#1f6feb"), button(run_url(), "Approve or reject", "#1a7f37"),
+        f'<p style="color:#59636e;font-size:13px">{h(approve)}</p>',
+        f"<p>{h(ep['summary'])}</p>",
+        "<h3>Stories</h3><ul>", *[f'<li><a href="{h(l["link"])}">{h(l["title"])}</a></li>' for l in ep["links"]], "</ul>",
+        "<h3>Social media post</h3>", f'<p style="color:#59636e;font-size:13px">{h(paste)}</p>',
+        f'<pre style="white-space:pre-wrap;font-family:inherit;background:#f6f8fa;padding:12px;border-radius:6px">{h(social)}</pre>'
+        if social else "<p><i>The social post couldn't be written this week; see the run log.</i></p>",
+        "<h3>Script</h3>", *[f"<p>{h(p)}</p>" for p in script.split("\n\n")], "</div>"])
+    return f"🎙️ Ready to review: {ep['title']}", text, html
+
+
+def notify(failed=False):
+    """Email the preview (or a quiet-week / failure note) through the nwca-wrap-trigger Worker."""
+    url, secret = os.getenv("NOTIFY_URL"), os.getenv("NOTIFY_SECRET")
+    if not (url and secret):
+        print("NOTIFY_URL / NOTIFY_SECRET not set; skipping the email.")
+        return
+    subject, text, html = preview_email(failed)
+    r = requests.post(url, json={"subject": subject, "text": text, "html": html},
+                      headers={"Authorization": f"Bearer {secret}"}, timeout=60)
+    r.raise_for_status()
+    print(f"Emailed: {subject}")
 
 
 def publish():
@@ -504,8 +565,11 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "trailer":
         publish_trailer(sys.argv[2])
         sys.exit()
-    if len(sys.argv) > 1 and sys.argv[1] in ("collect", "review"):
-        {"collect": collect, "review": review}[sys.argv[1]]()
+    if len(sys.argv) > 1 and sys.argv[1] in ("collect", "review", "notify"):
+        if sys.argv[1] == "notify":
+            notify(failed="--failed" in sys.argv)
+        else:
+            {"collect": collect, "review": review}[sys.argv[1]]()
         sys.exit()
     stage = sys.argv[1] if len(sys.argv) > 1 else "all"
     if stage in ("build", "all"):
