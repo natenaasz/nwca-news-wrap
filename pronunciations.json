@@ -2,8 +2,13 @@
   "nwcaonline.com": "N-W-C-A online dot com",
   "NWCAonline.com": "N-W-C-A online dot com",
   "nwcaonline": "N-W-C-A online",
-  "NWCA": "N-W-C-A",
+  "NWCA": {"say": "N-W-C-A", "ipa": "ˌɛndˌʌbᵊljusˌiˈA"},
+  "NJCAA": {"say": "N-J-C double-A", "ipa": "ˌɛnʤˌAsˌidˌʌbᵊlˈA"},
+  "NAIA": {"say": "N-A-I-A", "ipa": "ˌɛnˌAˌIˈA"},
+  "3C2A": {"say": "Three-C-Two-A", "ipa": "θɹˌisˌitˌuˈA"},
+  "NCWA": {"say": "N-C-W-A", "ipa": "ˌɛnsˌidˌʌbᵊljuˈA"},
+  "Theraworx": {"say": "Thair-uh-works", "ipa": "θˈɛɹəwˌɜɹks"},
   "WIBN": "W-I-B-N",
-  "Naasz": "Nahz",
+  "Naasz": {"say": "Nahz", "ipa": "nˈɑz"},
   "Lehigh": "Lee-high"
 }

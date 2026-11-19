@@ -46,5 +46,9 @@ stays on as a fallback and skips itself once an episode has been built.
 
 ## Optional
 - `assets/intro.mp3` / `assets/outro.mp3` get stitched on automatically if present.
-- Add names to `pronunciations.json` when the voice mispronounces them.
+- Add names to `pronunciations.json` when the voice mispronounces them. A plain entry is a respelling
+  (`"Lehigh": "Lee-high"`). For exact control with Kokoro, give phonemes too:
+  `"Theraworx": {"say": "Thair-uh-works", "ipa": "θˈɛɹəwˌɜɹks"}`. An all-caps key such as `NJCAA` also
+  matches the spelled-out "N-J-C-A-A" the script uses. "live" is read as in "live broadcast" when the
+  words around it say so (watch it live, live results, livestream); otherwise as in "where they live".
 - Test locally: `python news_wrap.py build` and listen to `output/*.mp3` before publishing anything.

@@ -59,7 +59,7 @@ PODCAST = {
 INTRO_MP3 = Path("assets/intro.mp3")   # optional music bumpers
 OUTRO_MP3 = Path("assets/outro.mp3")
 OUT = Path("output")
-PRONUNCIATIONS = Path("pronunciations.json")  # {"Naasz": "Nahz", ...}
+PRONUNCIATIONS = Path("pronunciations.json")  # see apply_pronunciations
 
 
 # ---------- 1. Fetch the week's articles ----------
@@ -236,10 +236,72 @@ def write_social(script, minutes):
     return post if LINK_PLACEHOLDER in post else f"{post}\n\n{LINK_PLACEHOLDER}"
 
 
-def apply_pronunciations(text):
+DIGIT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+
+
+def term_pattern(term):
+    """Regex for a pronunciations.json key. An acronym like NJCAA or 3C2A also matches the spelled-out
+    forms the script uses ("N-J-C-A-A", "Three-C-Two-A"); any other key matches as a whole word."""
+    if re.fullmatch(r"[A-Z0-9]{2,}", term):
+        parts = [rf"(?:{c}|{DIGIT_WORDS[int(c)]})" if c.isdigit() else c for c in term]
+        return re.compile(r"(?<![\w-])" + r"[-. ]?".join(parts) + r"(?![\w-])", re.IGNORECASE)
+    return re.compile(rf"(?<![\w-]){re.escape(term)}(?![\w-])")
+
+
+def kokoro_phonemes(word, ipa):
+    """Kokoro's inline markup: speak `word` with exactly these phonemes."""
+    return f"[{word}](/{ipa}/)"
+
+
+# "live" as in a live broadcast (rhymes with five), not "where they live" (rhymes with give).
+# The voice guesses from grammar and often gets "watch it live on Flo" wrong, so these say it outright.
+LIVE_ADJ_IPA = "lˈIv"
+LIVE_BEFORE = (r"watch|watches|watched|watching|stream|streams|streamed|streaming|air|airs|aired|airing|"
+               r"broadcast|broadcasts|broadcasting|televised|carried|shown|go|goes|going|went|is|are|was|"
+               r"were|be|been|being|catch|follow|tune in|available")
+LIVE_AFTER = (r"stream|streams|streaming|streamed|coverage|results?|scoring|scores?|updates?|broadcasts?|"
+              r"look|action|events?|audio|video|blog|feed|shows?|brackets?|webcast|television|TV|"
+              r"pay-per-view|PPV|from|tonight|today|this weekend|online")
+LIVE_RULES = [
+    # watch it live, airs live, will be live, go live, catch all the action live ...
+    re.compile(rf"(\b(?:{LIVE_BEFORE})(?:\s+(?:it|them|every match|all|all the action|the action))?\s+)(live)\b",
+               re.IGNORECASE),
+    # live coverage, live results, live-streamed, live from, live at 7 ...
+    re.compile(rf"(?<!\[)\b(live)(?=[\s-]+(?:{LIVE_AFTER})\b|\s+at\s+\d)", re.IGNORECASE),
+    # live on FloWrestling / ESPN ... (but not "live on campus")
+    re.compile(r"(?<!\[)\b(live)(?=\s+on\s+(?:Flo|ESPN|BTN|Big Ten Network|NBC|Peacock|Fox|FS1|YouTube|Facebook|"
+               r"TrackWrestling|Trackwrestling|the N-?W-?C-?A|N-W-C-A|NWCA|nwcaonline))", re.IGNORECASE),
+]
+
+
+def mark_live(text):
+    text = re.sub(r"\b(live)(-?stream(?:s|ed|ing)?)\b",
+                  lambda m: kokoro_phonemes(m.group(0), LIVE_ADJ_IPA + "stɹˌim" +
+                                            {"s": "z", "ed": "d", "ing": "ɪŋ"}.get(
+                                                re.sub(r"^-?stream", "", m.group(2).lower()), "")),
+                  text, flags=re.IGNORECASE)
+    first, second, third = LIVE_RULES
+    text = first.sub(lambda m: m.group(1) + kokoro_phonemes(m.group(2), LIVE_ADJ_IPA), text)
+    for rule in (second, third):
+        text = rule.sub(lambda m: kokoro_phonemes(m.group(1), LIVE_ADJ_IPA), text)
+    return text
+
+
+def apply_pronunciations(text, kokoro=None):
+    """pronunciations.json maps a word to either a respelling ("Naasz": "Nahz") or
+    {"say": respelling, "ipa": Kokoro phonemes}. Kokoro gets the exact phonemes where given;
+    other voices get the respelling."""
+    kokoro = TTS_PROVIDER == "kokoro" if kokoro is None else kokoro
     if PRONUNCIATIONS.exists():
         for word, spoken in json.loads(PRONUNCIATIONS.read_text()).items():
-            text = re.sub(rf"\b{re.escape(word)}\b", spoken, text)
+            if isinstance(spoken, str):
+                spoken = {"say": spoken}
+            if kokoro and spoken.get("ipa"):
+                text = term_pattern(word).sub(lambda m: kokoro_phonemes(m.group(0), spoken["ipa"]), text)
+            elif spoken.get("say"):
+                text = term_pattern(word).sub(lambda m: spoken["say"], text)
+    if kokoro:
+        text = mark_live(text)
     return text
 
 
