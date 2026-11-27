@@ -155,6 +155,8 @@ def fetch_articles():
     start, end = friday_window()
     print(f"Window: {start:%a %b %d %I:%M%p} -> {end:%a %b %d %I:%M%p} {LOCAL_TZ.key}")
     already_aired = published_links()
+    # Manual runs can leave out articles: SKIP_ARTICLES="phrase one; phrase two" matches titles or links.
+    skip_terms = [t.strip() for t in os.getenv("SKIP_ARTICLES", "").split(";") if t.strip()]
     pool = {a["link"]: a for a in load_saved()}
     pool.update({a["link"]: a for a in feed_articles()})  # live feed wins for anything edited
     articles = []
@@ -164,6 +166,9 @@ def fetch_articles():
             continue
         if a["link"] in already_aired:
             print(f"Skipping (already aired): {a['title']}")
+            continue
+        if any(term.lower() in f'{a["title"]} {a["link"]}'.lower() for term in skip_terms):
+            print(f"Skipping (left out for this run): {a['title']}")
             continue
         articles.append({"title": a["title"], "link": a["link"],
                          "date": published.strftime("%B %d"), "body": a["body"]})
@@ -200,7 +205,9 @@ def write_script(articles):
     payload = "\n\n".join(
         f"ARTICLE {i+1}: {a['title']} ({a['date']})\n{a['body']}" for i, a in enumerate(articles)
     )
-    script = ask_claude(SYSTEM_PROMPT, f"This episode covers {week_label}.\n\n{payload}", 8000)
+    note = os.getenv("EDITOR_NOTE", "").strip()  # one-off instruction from a manual run
+    note = f"Editor's note for this episode (follow it): {note}\n\n" if note else ""
+    script = ask_claude(SYSTEM_PROMPT, f"This episode covers {week_label}.\n\n{note}{payload}", 8000)
 
     # Second short call for episode title + show notes
     raw = ask_claude("Return ONLY JSON: {\"title\": str (under 70 chars), \"summary\": str (2-3 sentences)}. No markdown.",

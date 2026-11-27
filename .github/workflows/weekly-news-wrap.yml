@@ -13,6 +13,14 @@ on:
         description: "Include articles through now (past this Friday's 2pm CT cutoff)"
         type: boolean
         default: false
+      skip:
+        description: "Leave out articles whose title or link contains any of these phrases (separate with ;)"
+        type: string
+        default: ""
+      note:
+        description: "Extra instruction for the script writer (optional)"
+        type: string
+        default: ""
 
 jobs:
   gate:
@@ -60,6 +68,8 @@ jobs:
           SITE_RSS_URL: ${{ vars.SITE_RSS_URL }}
           R2_PUBLIC_BASE: ${{ vars.R2_PUBLIC_BASE }}  # to skip articles that already aired
           WINDOW_END_NOW: ${{ inputs.through_now && '1' || '' }}
+          SKIP_ARTICLES: ${{ inputs.skip }}
+          EDITOR_NOTE: ${{ inputs.note }}
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
           KOKORO_VOICE: ${{ vars.KOKORO_VOICE }}
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
